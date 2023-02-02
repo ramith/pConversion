@@ -4,9 +4,9 @@ import ballerina/log;
 import ballerina/http;
 import ballerina/time;
 
-configurable string exchangeRateAPIKey = ?;
-configurable string clientSecret = ?;
 configurable string clientId = ?;
+configurable string clientSecret = ?;
+configurable string currencyExchangeAPIKey = ?;
 
 type PricingInfo record {
     string currencyCode;
@@ -21,29 +21,29 @@ service / on new http:Listener(9090) {
 
     resource function get convert(decimal amount = 1, string target = "AUD", string base = "USD") returns PricingInfo|error {
 
-        log:printInfo("new request", amount = amount);
+
+        log:printInfo("convertion request", baseCurrency = base, targetCurrency = target, amount = amount);
+
         countryprofile:Client countryprofileEp = check new (config = {
             auth: {
                 clientId: clientId,
                 clientSecret: clientSecret
             }
         });
-        countryprofile:Currency getCurrencyCodeResponse = check countryprofileEp->getCurrencyCode(code = target);
-        exchangerates:Client exchangeratesEp = check new ();
-        exchangerates:CurrencyExchangeInfomation getExchangeRateForResponse = check exchangeratesEp->getExchangeRateFor(apikey = exchangeRateAPIKey, baseCurrency = base);
+        countryprofile:Currency targetCurrencyInfo = check countryprofileEp->getCurrencyCode(code = base);
+        exchangerates:Client baseClient = check new ();
+        exchangerates:CurrencyExchangeInfomation rate = check baseClient->getExchangeRateFor(currencyExchangeAPIKey, base);
 
-        decimal exchangeRate = <decimal>getExchangeRateForResponse.conversion_rates[target];
-        decimal convertedAmount = amount * exchangeRate;
-
-        time:Utc validUntil = time:utcAddSeconds(time:utcNow(), 3600);
+        decimal exchangeRate = <decimal>rate.conversion_rates[target];
+        time:Utc validUntil = time:utcAddSeconds(time:utcNow(), 3600 * 60);
 
         PricingInfo pricingInfo = {
+            displayName: targetCurrencyInfo.displayName,
             currencyCode: target,
-            displayName: getCurrencyCodeResponse.displayName,
-            amount: convertedAmount,
+            amount: exchangeRate * amount,
             validUntil: time:utcToString(validUntil)
-        };
 
+        };
         return pricingInfo;
     }
 }
